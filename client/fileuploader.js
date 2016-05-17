@@ -266,6 +266,7 @@ qq.FileUploaderBasic = function(o){
         button: null,
         multiple: true,
         maxConnections: 3,
+        disableCancelForFormUploads: false,
         // validation        
         allowedExtensions: [],
         acceptFiles: null,               
@@ -284,7 +285,8 @@ qq.FileUploaderBasic = function(o){
             sizeError: "{file} is too large, maximum file size is {sizeLimit}.",
             minSizeError: "{file} is too small, minimum file size is {minSizeLimit}.",
             emptyError: "{file} is empty, please select files again without it.",
-            onLeave: "The files are being uploaded, if you leave now the upload will be cancelled."            
+            noFilesError: "No files to upload.",
+            onLeave: "The files are being uploaded, if you leave now the upload will be cancelled."
         },
         showMessage: function(message){
             alert(message);
@@ -400,16 +402,21 @@ qq.FileUploaderBasic.prototype = {
         this._button.reset();   
     },  
     _uploadFileList: function(files){
-        for (var i=0; i<files.length; i++){
-            if ( !this._validateFile(files[i])){
-                return;
-            }            
+        if (files.length > 0) {
+			for (var i=0; i<files.length; i++){
+			    if ( !this._validateFile(files[i])){
+			        return;
+			    }
+			}
+
+			for (var i=0; i<files.length; i++){
+			    this._uploadFile(files[i]);
+			}
         }
-        
-        for (var i=0; i<files.length; i++){
-            this._uploadFile(files[i]);        
-        }        
-    },       
+        else {
+			this._error('noFilesError', "");
+        }
+    },
     _uploadFile: function(fileContainer){      
         var id = this._handler.add(fileContainer);
         var fileName = this._handler.getName(id);
@@ -514,8 +521,10 @@ qq.FileUploader = function(o){
 
         // template for one item in file list
         fileTemplate: '<li>' +
-                '<span class="qq-upload-file"></span>' +
                 '<span class="qq-upload-spinner"></span>' +
+                '<span class="qq-upload-finished"></span>' +
+                '<span class="qq-upload-failed-icon"></span>' +
+                '<span class="qq-upload-file"></span>' +
                 '<span class="qq-upload-size"></span>' +
                 '<a class="qq-upload-cancel" href="#">Cancel</a>' +
                 '<span class="qq-upload-failed-text">Failed</span>' +
@@ -530,6 +539,8 @@ qq.FileUploader = function(o){
                         
             file: 'qq-upload-file',
             spinner: 'qq-upload-spinner',
+            finished: 'qq-upload-finished',
+            failedicon: 'qq-upload-failed-icon',
             size: 'qq-upload-size',
             cancel: 'qq-upload-cancel',
 
@@ -537,6 +548,12 @@ qq.FileUploader = function(o){
             // used in css to hide progress spinner
             success: 'qq-upload-success',
             fail: 'qq-upload-fail'
+        },
+
+		//if null, use default images specified in fileuploader.css
+        icons : {
+            finished: null,
+            failed: null
         }
     });
     // overwrite options with user supplied    
@@ -547,9 +564,10 @@ qq.FileUploader = function(o){
     this._listElement = this._options.listElement || this._find(this._element, 'list');
     
     this._classes = this._options.classes;
+    this._icons = this._options.icons;
         
     this._button = this._createUploadButton(this._find(this._element, 'button'));        
-    
+
     this._bindCancelEvent();
     this._setupDragDrop();
 };
@@ -659,18 +677,34 @@ qq.extend(qq.FileUploader.prototype, {
         qq.FileUploaderBasic.prototype._onComplete.apply(this, arguments);
 
         // mark completed
-        var item = this._getItemByFileId(id);                
-        qq.remove(this._find(item, 'cancel'));
+        var item = this._getItemByFileId(id);
+        if (!this._options.disableCancelForFormUploads || qq.UploadHandlerXhr.isSupported()) {
+            qq.remove(this._find(item, 'cancel'));
+        }
         qq.remove(this._find(item, 'spinner'));
         
         if (result.success){
-            qq.addClass(item, this._classes.success);    
+            qq.addClass(item, this._classes.success);
+            this._find(item, 'finished').style.display = "inline-block";
+            if (this._icons.finished) {
+	            this._find(item, 'finished').style.background = "url('" + this._icons.finished + "')";
+            }
         } else {
             qq.addClass(item, this._classes.fail);
-        }         
+            this._find(item, 'failedicon').style.display = "inline-block";
+            if (this._icons.failed) {
+                this._find(item, 'failedicon').style.background = "url('" + this._icons.failed + "')";
+            }
+        }
     },
     _addToList: function(id, fileName){
-        var item = qq.toElement(this._options.fileTemplate);                
+        var item = qq.toElement(this._options.fileTemplate);
+
+        if (this._options.disableCancelForFormUploads && !qq.UploadHandlerXhr.isSupported()) {
+            var cancelLink = this._find(item, 'cancel');
+            qq.remove(cancelLink);
+        }
+
         item.qqFileId = id;
 
         var fileElement = this._find(item, 'file');        
